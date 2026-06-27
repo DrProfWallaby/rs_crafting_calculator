@@ -8,14 +8,3 @@ class Item:
         if (item, amount) in self.required_items:
             raise Exception("Error: Item already added.")
         self.required_items.append((item, amount))
-
-#    def get_required_items(self):
-#        if not self.required_items:
-#            return
-#        total_required_items: list[tuple[Item, int]] = []
-#        for item_tuple in self.required_items:
-#            item = item_tuple[0]
-#            if item.required_items:
-#                item.get_required_items()
-#            total_required_items.append(item_tuple)
-#        return total_required_items
