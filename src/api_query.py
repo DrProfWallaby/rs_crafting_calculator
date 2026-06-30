@@ -3,6 +3,28 @@ import json
 
 from bs4 import BeautifulSoup
 
+def get_item_name(name: str) -> str:
+    roman_numerals = ["i", 
+                      "ii", 
+                      "iii", 
+                      "iv", 
+                      "v", 
+                      "vi", 
+                      "vii", 
+                      "viii", 
+                      "ix", 
+                      "x"
+                    ]
+    if not name:
+        raise ValueError("No input provided")
+    split_name = name.lower().split(" ")
+    if len(split_name) == 1:
+        return split_name[0]
+    for roman_numeral in roman_numerals:
+        if roman_numeral in split_name[-1]:
+            split_name[-1] = split_name[-1].upper()
+    return " ".join(split_name)
+
 def get_url(input:str) -> str:
     url = ""
     split_input = input.split(" ")
@@ -32,6 +54,8 @@ def get_item_list(r: requests.Response) -> list[tuple[str, int]]:
 
     html_doc = BeautifulSoup(json_final, 'html.parser')
     table = html_doc.find('div', {"class": "recipe-table"})
+    if not table:
+        return items_needed
     rows = table.find_all("tr")
     
     for i in rows:
@@ -39,19 +63,14 @@ def get_item_list(r: requests.Response) -> list[tuple[str, int]]:
         data = [j.text for j in table_data]
         parsed_rows.append(data)
     for row in parsed_rows:
-        row_index = len(parsed_rows) - 1
+        if "Transmutation" in html_doc:
+            break
+        if "Cursed magic logs" in row:
+            break
         if row == [] and len(items_needed) != 0:
             break
         if row == []:
             continue
-        if row[0] == '' and row != parsed_rows[row_index - 1]:
+        if row[0] == '':
             items_needed.append((row[1], row[2]))
     return items_needed
-
-#url_split = url.split('&')
-#page_name = url_split[1].split('=')
-#split_name = page_name[1].split('_')
-#name = " ".join(split_name)
-
-#print(f"Items needed for {name}:")
-#print(items_needed)
