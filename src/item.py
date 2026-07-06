@@ -3,7 +3,24 @@ import math
 from api_query import get_url, request_page, get_recipe_data, get_item_name
 
 class Item:
-    BASE_MATERIALS = {"ashes", "vial", "vial of water"}
+    BASE_MATERIALS = {
+        "ashes",
+        "vial",
+        "vial of water",
+        "pale energy",
+        "flickering energy",
+        "bright energy",
+        "glowing energy",
+        "sparkling energy",
+        "gleaming energy",
+        "vibrant energy",
+        "lustrous energy",
+        "elder energy",
+        "brilliant energy",
+        "radiant energy",
+        "luminous energy",
+        "incandescent energy"
+    }
 
     def __init__(self, name: str, amount: int, price: int = 0):
         self.name = get_item_name(name)

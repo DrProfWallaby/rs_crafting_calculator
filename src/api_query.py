@@ -1,7 +1,6 @@
 import re
 import requests
 import json
-import sys
 
 from urllib.parse import quote
 from bs4 import BeautifulSoup
@@ -84,8 +83,15 @@ def get_recipe_data(r: requests.Response, target_name: str) -> tuple[list[tuple[
 
     page_text = soup.get_text(separator=' ')
     is_herblore = 'herblore' in page_text.lower()
-    # Skip transmutation/necromancy-like pages
-    if 'transmutation' in page_text.lower() or 'ritual component info' in page_text.lower() or 'necromancy' in page_text.lower():
+    section_titles = []
+    for heading in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+        heading_text = heading.get_text(separator=' ', strip=True)
+        if heading_text:
+            section_titles.append(heading_text)
+    section_text = ' '.join(section_titles).lower()
+    # Only skip pages whose section headings clearly indicate a special-case
+    # transmutation or ritual page; ordinary recipe pages should still parse.
+    if 'transmutation' in section_text or 'ritual component info' in section_text or 'necromancy' in section_text:
         return items_needed, output_quantity, is_herblore, page_title
 
     rows = table.find_all('tr')
