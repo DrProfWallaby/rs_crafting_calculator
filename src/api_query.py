@@ -1,39 +1,46 @@
+import re
 import requests
 import json
+import sys
 
+from urllib.parse import quote
 from bs4 import BeautifulSoup
 
-def get_item_name(name: str) -> str:
-    roman_numerals = ["i", 
-                      "ii", 
-                      "iii", 
-                      "iv", 
-                      "v", 
-                      "vi", 
-                      "vii", 
-                      "viii", 
-                      "ix", 
-                      "x"
-                    ]
-    if not name:
-        raise ValueError("No input provided")
-    split_name = name.lower().split(" ")
-    if len(split_name) == 1:
-        return split_name[0]
-    for roman_numeral in roman_numerals:
-        if roman_numeral in split_name[-1]:
-            split_name[-1] = split_name[-1].upper()
-    return " ".join(split_name)
+BASE_OUTPUT_SUFFIXES = {"(item)", "(scenery)"}
 
-def get_url(input:str) -> str:
-    url = ""
-    split_input = input.split(" ")
-    if len(split_input) == 1:
-        url = f"https://runescape.wiki/api.php?action=parse&page={input}&format=json"
-    else:
-        combined_input = "_".join(split_input)
-        url = f"https://runescape.wiki/api.php?action=parse&page={combined_input}&format=json"
-    return url
+
+def get_item_name(name: str) -> str:
+    roman_numerals = {
+        "i",
+        "ii",
+        "iii",
+        "iv",
+        "v",
+        "vi",
+        "vii",
+        "viii",
+        "ix",
+        "x",
+    }
+    if not name or not name.strip():
+        raise ValueError("No input provided")
+
+    name = re.sub(r"\+\s*(\d+)", r"+\1", name.strip())
+    split_name = name.split()
+    normalized = []
+    for index, token in enumerate(split_name):
+        lower_token = token.lower()
+        if index == len(split_name) - 1 and lower_token in roman_numerals:
+            normalized.append(lower_token.upper())
+        else:
+            normalized.append(lower_token)
+    if normalized and normalized[-1] in BASE_OUTPUT_SUFFIXES:
+        normalized.pop()
+    return " ".join(normalized)
+
+def get_url(input: str) -> str:
+    page = quote(input.replace(' ', '_'), safe='_')
+    return f"https://runescape.wiki/api.php?action=parse&page={page}&format=json&redirects=1"
 
 def request_page(url: str) -> requests.Response:
     headers = {'user-agent' : 'recipe-calculator'}
@@ -43,34 +50,61 @@ def request_page(url: str) -> requests.Response:
     )
     return r
 
-def get_item_list(r: requests.Response) -> list[tuple[str, int]]:
-    items_needed = []
-    parsed_rows = []
+def parse_quantity(value: str) -> int:
+    digits = "".join(ch for ch in value if ch.isdigit())
+    return int(digits) if digits else 0
 
-    json_query = json.loads(r.text)
+
+def get_recipe_data(r: requests.Response, target_name: str) -> tuple[list[tuple[str, int]], int, bool, str]:
+    """
+    Parse a MediaWiki parse API response to extract recipe ingredients.
+    Returns: (items_needed, output_quantity, is_herblore, page_title)
+    """
+    items_needed: list[tuple[str, int]] = []
+    output_quantity = 1
+    is_herblore = False
+    page_title = ""
+
+    try:
+        json_query = json.loads(r.text)
+    except json.JSONDecodeError:
+        return items_needed, output_quantity, is_herblore, page_title
+
+    if 'error' in json_query or 'parse' not in json_query:
+        return items_needed, output_quantity, is_herblore, page_title
+
     json_parsed = json_query['parse']
-    json_text = json_parsed['text']
-    json_final = json_text['*']
+    page_title = json_parsed.get('title', '')
+    html = json_parsed['text']['*']
 
-    html_doc = BeautifulSoup(json_final, 'html.parser')
-    table = html_doc.find('div', {"class": "recipe-table"})
+    soup = BeautifulSoup(html, 'html.parser')
+    table = soup.find('div', {'class': 'recipe-table'})
     if not table:
-        return items_needed
-    rows = table.find_all("tr")
-    
-    for i in rows:
-        table_data = i.find_all('td')
-        data = [j.text for j in table_data]
-        parsed_rows.append(data)
-    for row in parsed_rows:
-        if "Transmutation" in html_doc:
-            break
-        if "Cursed magic logs" in row:
-            break
-        if row == [] and len(items_needed) != 0:
-            break
-        if row == []:
+        return items_needed, output_quantity, is_herblore, page_title
+
+    page_text = soup.get_text(separator=' ')
+    is_herblore = 'herblore' in page_text.lower()
+    # Skip transmutation/necromancy-like pages
+    if 'transmutation' in page_text.lower() or 'ritual component info' in page_text.lower() or 'necromancy' in page_text.lower():
+        return items_needed, output_quantity, is_herblore, page_title
+
+    rows = table.find_all('tr')
+    dose_strip = re.compile(r"\s*\(\d+\)$")
+    normalized_target = get_item_name(target_name)
+
+    for row in rows:
+        cols = [td.text.strip() for td in row.find_all('td')]
+        if not cols:
             continue
-        if row[0] == '':
-            items_needed.append((row[1], row[2]))
-    return items_needed
+        if len(cols) >= 3 and cols[0].strip() == '':
+            name = cols[1].strip()
+            amount = parse_quantity(cols[2])
+            normalized_name = get_item_name(name)
+            short_name = dose_strip.sub('', normalized_name)
+            if short_name == normalized_target:
+                if amount > 0:
+                    output_quantity = amount
+            else:
+                items_needed.append((name, amount))
+
+    return items_needed, output_quantity, is_herblore, page_title
