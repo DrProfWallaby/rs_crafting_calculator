@@ -103,6 +103,8 @@ def get_recipe_data(r: requests.Response, target_name: str) -> tuple[list[tuple[
         if not cols:
             continue
         if len(cols) >= 3 and cols[0].strip() == '':
+            if "[r" in cols[1]:
+                break
             name = cols[1].strip()
             amount = parse_quantity(cols[2])
             normalized_name = get_item_name(name)
